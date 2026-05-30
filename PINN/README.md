@@ -1,180 +1,216 @@
 # PhysicsInformedNN
 
-Ноутбук сам определяет корень проекта. Если он запускается из папки `PINN`, то корнем считается родительская папка. Если ноутбук запускается из корня, пути также остаются рабочими.
+## Расположение в проекте
+
+Ноутбук сам определяет корень проекта:
+
+- если запуск идет из папки `PINN`, то корнем считается родительская директория;
+- если запуск идет из корня проекта, пути также остаются рабочими.
+
+Ожидаемая структура проекта:
+
+```text
+.
+├── generate_data.py
+├── requirements.txt
+├── storage/
+│   └── dataset_10k.csv
+├── visualization/
+└── PINN/
+    ├── PhysicsInformedNN.ipynb
+    └── saved_models/
+```
+
+## Входной датасет
+
+По умолчанию ноутбук читает файл:
+
+```text
+storage/dataset_10k.csv
+```
+
+Путь задается в `Config.data_path`.
+
+Минимально необходимые колонки:
+
+| Колонка | Смысл |
+|---|---|
+| `kappa` | волновое число; единственный входной признак модели |
+| `R` | коэффициент отражения; должен лежать в диапазоне `[0, 1]` |
 
 ## Конфигурация
 
-Основные настройки находятся в `Config`.
+Основные настройки находятся в классе `Config`.
 
 ### Пути
 
-| Параметр | Смысл |
-|---|---|
-| `notebook_dir` | текущая рабочая директория ноутбука |
-| `project_root` | корень проекта |
-| `data_path` | путь к `.csv` датасету |
-| `saved_models_dir` | папка для сохранения моделей |
-| `visualization_dir` | папка для сохранения графиков и таблиц |
+| Параметр | Значение по умолчанию | Смысл |
+|---|---:|---|
+| `notebook_dir` | `Path.cwd()` | текущая рабочая директория ноутбука |
+| `project_root` | определяется автоматически | корень проекта |
+| `data_path` | `project_root / "storage" / "dataset_10k.csv"` | путь к датасету |
+| `saved_models_dir` | `PINN/saved_models` | папка для сохранения моделей |
+| `visualization_dir` | `project_root / "visualization"` | папка для сохранения графиков и таблиц |
 
 ### Загрузка и сохранение модели
 
-| Параметр | Смысл |
-|---|---|
-| `load_existing_model` | если `True`, модель загружается из чекпоинта |
-| `model_checkpoint_path` | путь к чекпоинту; если `None`, используется автоматически построенный путь |
-| `save_model_after_training` | сохранять ли модель после обучения |
-| `model_run_id` | номер запуска; если `None`, выбирается следующий свободный номер |
+| Параметр | Значение по умолчанию | Смысл |
+|---|---:|---|
+| `load_existing_model` | `False` | загружать ли существующий checkpoint |
+| `model_checkpoint_path` | `None` | путь к checkpoint; нужен при `load_existing_model=True` |
+| `save_model_after_training` | `True` | сохранять ли модель после обучения |
+| `model_run_id` | `None` | номер запуска; если `None`, выбирается следующий свободный номер |
 
-Если `model_run_id=None`, ноутбук сам найдет следующий номер модели. 
-
-### Физические параметры
-
-| Параметр | Смысл |
-|---|---|
-| `plate_rho` | плотность материала пластины |
-| `plate_h` | толщина пластины |
-| `plate_E` | модуль Юнга |
-| `plate_nu` | коэффициент Пуассона |
-| `omega0` | собственная частота резонатора |
-| `period_a` | период массива резонаторов |
-| `resonator_damping_ratio` | демпфирование резонатора |
-| `resonator_mu_scale` | масштаб параметра взаимодействия резонатора с пластиной |
-| `spectrum_n_terms` | число членов суммы в каждую сторону при построении спектров |
-
-Эти значения должны быть согласованы с параметрами, которые использовались при генерации датасета.
+Если `model_run_id=None`, ноутбук смотрит уже существующие модели и папки визуализаций с таким же базовым именем и выбирает следующий свободный номер запуска.
 
 ### Разбиение данных и шум
 
-| Параметр | Смысл |
-|---|---|
-| `add_noise` | добавлять ли шум в обучающие данные |
-| `noise_level` | уровень шума |
-| `noise_seed` | seed для шума |
-| `test_size` | доля тестовой выборки |
-| `valid_size` | доля валидационной выборки |
-| `n_strat_bins` | число бинов для стратификации по `R` |
+| Параметр | Значение по умолчанию | Смысл |
+|---|---:|---|
+| `add_noise` | `False` | добавлять ли шум в обучающие значения `R` |
+| `noise_level` | `0.0` | относительный уровень гауссовского шума |
+| `noise_seed` | `42` | seed для генерации шума |
+| `valid_size` | `0.15` | доля validation-выборки |
+| `test_size` | `0.15` | доля test-выборки |
+| `n_strat_bins` | `10` | число бинов для стратификации по `log1p(R)` |
 
-Шум учитывается в структуре папок сохранения.
+Шум добавляется только к train-части. Validation и test остаются построенными по исходным значениям `R`.
 
-### Обучение
+## DataLoader и weighted sampler
 
-| Параметр | Смысл |
-|---|---|
-| `batch_size` | размер батча |
-| `use_weighted_sampler` | использовать ли weighted sampler |
-| `sampler_high_R_scale` | усиление веса объектов с большим `R` |
-| `max_epochs` | максимальное число эпох AdamW |
-| `learning_rate` | learning rate AdamW |
-| `weight_decay` | L2-регуляризация в AdamW |
-| `grad_clip_norm` | gradient clipping |
-| `scheduler_factor` | множитель уменьшения learning rate |
-| `scheduler_patience` | patience scheduler |
-| `patience` | patience early stopping |
-| `min_delta` | минимальное улучшение для early stopping |
-
-### L-BFGS
-
-| Параметр | Смысл |
-|---|---|
-| `use_lbfgs` | запускать ли L-BFGS после AdamW |
-| `lbfgs_lr` | learning rate L-BFGS |
-| `lbfgs_max_iter` | максимум итераций |
-| `lbfgs_max_eval` | максимум вычислений функции |
-| `lbfgs_history_size` | размер истории L-BFGS |
-| `lbfgs_tolerance_grad` | tolerance по градиенту |
-| `lbfgs_tolerance_change` | tolerance по изменению loss |
-| `lbfgs_log_every` | частота логирования train loss |
-| `lbfgs_valid_log_every` | частота логирования validation loss |
-
-### Loss-функция
-
-Общий loss имеет вид:
+Если `use_weighted_sampler=True`, train-выборка подается через `WeightedRandomSampler`. Фактическая формула весов в ноутбуке:
 
 ```text
-loss = data_loss + lambda_phys * physics_loss + lambda_R * reflection_loss
+weight = 1
+       + sampler_high_R_scale * R
+       + 2 * sampler_high_R_scale * I(R > 0.01)
+       + 4 * sampler_high_R_scale * I(R > 0.05)
 ```
 
-| Параметр | Смысл |
-|---|---|
-| `lambda_phys` | вес physics loss |
-| `lambda_R` | вес reflection loss |
-| `R_loss_eps` | стабилизатор для вычисления ошибки по `R` |
-| `R_loss_log_weight` | вес log-компоненты reflection loss |
-| `R_loss_sqrt_weight` | вес sqrt-компоненты reflection loss |
+Затем веса нормируются на среднее значение.
 
-### Архитектура
+| Параметр | Значение по умолчанию | Смысл |
+|---|---:|---|
+| `batch_size` | `512` | размер батча |
+| `use_weighted_sampler` | `True` | использовать ли weighted sampler |
+| `sampler_high_R_scale` | `4.0` | коэффициент усиления веса точек с большим `R` |
 
-| Параметр | Смысл |
-|---|---|
-| `hidden_dim` | ширина скрытых слоев |
-| `num_hidden_layers` | число скрытых слоев |
-| `dropout` | dropout |
+Если `use_weighted_sampler=False`, используется обычное перемешивание train-выборки.
 
-### Spectrum augmentation
+## Архитектура модели
 
-| Параметр | Смысл |
-|---|---|
-| `use_spectrum_augmentation` | добавлять ли дополнительные физические точки в train |
-| `spectrum_points_per_target_case` | число точек для целевых спектральных кейсов |
-| `spectrum_random_cases` | число случайных геометрических кейсов |
-| `spectrum_points_per_random_case` | число точек на случайный кейс |
-| `spectrum_augmentation_seed` | seed аугментации |
+| Параметр | Значение по умолчанию | Смысл |
+|---|---:|---|
+| `hidden_dim` | `64` | ширина скрытых слоев |
+| `num_hidden_layers` | `3` | число скрытых слоев |
+| `dropout` | `0.0` | dropout после скрытых слоев |
 
-Аугментация применяется только к train-части. Валидация и тест остаются построенными по исходному датасету.
+## Loss-функция
 
-### Визуализация
+Loss строится как комбинация трех ошибок:
 
-| Параметр | Смысл |
-|---|---|
-| `fixed_spectrum_points` | число точек для графиков спектров |
-| `reference_psi` | опорный угол падения для спектров и heatmap |
-| `near_zero_delta_y` | малый вертикальный сдвиг для почти одной линии резонаторов |
-| `geometry_grid_size` | размер сетки для heatmap |
-| `geometry_kappa_quantile_low` | нижний квантиль выбора `kappa` для heatmap |
-| `geometry_kappa_quantile_high` | верхний квантиль выбора `kappa` для heatmap |
-| `plot_sample_size` | число точек для scatter-графиков |
-| `relative_error_min_R` | нижний порог `R` для относительной ошибки |
+```text
+loss = R_loss_log_weight * SmoothL1(pred_logit_scaled, target_logit_scaled)
+     + SmoothL1(R_pred, R_true)
+     + R_loss_sqrt_weight * SmoothL1(sqrt(R_pred), sqrt(R_true))
+```
+
+Где:
+
+- `pred_logit_scaled` — предсказанный нормализованный `logit_R`;
+- `target_logit_scaled` — истинный нормализованный `logit_R`;
+- `R_pred` — восстановленный коэффициент отражения после обратного scaling и `sigmoid`;
+- `R_true` — истинный коэффициент отражения.
+
+Параметры loss:
+
+| Параметр | Значение по умолчанию | Смысл |
+|---|---:|---|
+| `R_loss_eps` | `1.0e-6` | стабилизатор для `logit_R` и `sqrt(R)` |
+| `R_loss_log_weight` | `0.85` | вес ошибки в пространстве `logit_R` |
+| `R_loss_sqrt_weight` | `0.15` | вес ошибки по `sqrt(R)` |
+
+Компонента `SmoothL1(R_pred, R_true)` имеет фиксированный вес `1.0`.
+
+## Обучение AdamW
+
+| Параметр | Значение по умолчанию | Смысл |
+|---|---:|---|
+| `max_epochs` | `2000` | максимум эпох AdamW |
+| `learning_rate` | `5.0e-4` | learning rate |
+| `weight_decay` | `1.0e-6` | L2-регуляризация |
+| `grad_clip_norm` | `5.0` | ограничение нормы градиента |
+| `scheduler_factor` | `0.5` | множитель уменьшения learning rate |
+| `scheduler_patience` | `70` | patience для `ReduceLROnPlateau` |
+| `patience` | `200` | patience для early stopping |
+| `min_delta` | `1.0e-8` | минимальное улучшение validation loss |
+
+## Обучение L-BFGS
+
+| Параметр | Значение по умолчанию | Смысл |
+|---|---:|---|
+| `use_lbfgs` | `True` | запускать ли L-BFGS после AdamW |
+| `lbfgs_lr` | `1.0` | learning rate L-BFGS |
+| `lbfgs_max_iter` | `5000` | максимум итераций |
+| `lbfgs_max_eval` | `7500` | максимум вычислений функции |
+| `lbfgs_history_size` | `100` | размер истории |
+| `lbfgs_tolerance_grad` | `1.0e-9` | tolerance по градиенту |
+| `lbfgs_tolerance_change` | `1.0e-11` | tolerance по изменению loss |
+| `lbfgs_log_every` | `10` | частота логирования train loss |
+| `lbfgs_valid_log_every` | `25` | частота проверки validation loss |
 
 ## Название модели
 
-Чекпоинт сохраняется в формате:
+Базовое имя модели строится так:
 
 ```text
-pinn_aug_ws1_N10k_h160x4_bs256_ep2000_lr0p0005_phys0p5_refl2_m01.pt
+pinn_{sampler_tag}_N{N}_h{hidden_dim}x{num_hidden_layers}_bs{batch_size}_ep{max_epochs}_lr{learning_rate}_m{run_id}.pt
+```
+
+Пример при настройках по умолчанию и датасете на 10 000 строк:
+
+```text
+pinn_ws4_N10k_h64x3_bs512_ep2000_lr0p0005_m01.pt
+```
+
+Если weighted sampler выключен:
+
+```text
+pinn_plain_N10k_h64x3_bs512_ep2000_lr0p0005_m01.pt
 ```
 
 | Фрагмент | Значение |
 |---|---|
-| `aug` / `noaug` | использовалась или не использовалась spectrum augmentation |
-| `ws1` | вес weighted sampler; `plain`, если sampler отключен |
-| `N10k` | размер исходного датасета |
-| `h160x4` | 4 скрытых слоя по 160 нейронов |
-| `bs256` | batch size 256 |
+| `ws4` | weighted sampler включен, `sampler_high_R_scale=4.0` |
+| `plain` | weighted sampler выключен |
+| `N10k` | число строк после очистки датасета |
+| `h64x3` | 3 скрытых слоя по 64 нейрона |
+| `bs512` | batch size 512 |
 | `ep2000` | максимум 2000 эпох AdamW |
 | `lr0p0005` | learning rate `0.0005` |
-| `phys0p5` | вес physics loss `0.5` |
-| `refl2` | вес reflection loss `2.0` |
-| `m01` | номер запуска с данным набором параметров |
+| `m01` | номер запуска |
 
 ## Сохранение модели
 
-Модели сохраняются в:
+Модели сохраняются в папку:
 
 ```text
 PINN/saved_models/noise_{noise_percent}/
 ```
 
-Например:
+Пример:
 
 ```text
-PINN/saved_models/noise_0/pinn_aug_ws1_N10k_h160x4_bs256_ep2000_lr0p0005_phys0p5_refl2_m01.pt
+PINN/saved_models/noise_0/pinn_ws4_N10k_h64x3_bs512_ep2000_lr0p0005_m01.pt
 ```
 
-Если запустить модель с теми же параметрами еще раз, следующий файл получит номер `m02`, затем `m03` и так далее.
+Если запустить обучение с теми же параметрами еще раз, следующий файл получит номер `m02`, затем `m03` и так далее.
+
+Если модель была загружена через `load_existing_model=True`, ноутбук не перезаписывает модель.
 
 ## Сохранение визуализаций
 
-Визуализации сохраняются в корневую папку проекта:
+Итоговые файлы сохраняются в:
 
 ```text
 visualization/noise_{noise_percent}/{N}k/{run_id}/
@@ -185,3 +221,44 @@ visualization/noise_{noise_percent}/{N}k/{run_id}/
 ```text
 visualization/noise_0/10k/01/
 ```
+
+Основные сохраняемые файлы:
+
+| Файл | Смысл |
+|---|---|
+| `metrics.txt` | таблица метрик в текстовом виде |
+| `metrics.png` | таблица метрик как изображение |
+| `prediction_quality.png` | качество предсказаний на test |
+| `relative_error.png` | анализ относительной ошибки |
+| `spectrum.png` | сравнение истинного и предсказанного спектра `R(kappa)` |
+| `error_spectrum.png` | абсолютная и относительная ошибка вдоль спектра |
+
+## Как запустить
+
+1. Установить зависимости из корня проекта:
+
+```bash
+pip install -r requirements.txt
+```
+
+2. Сгенерировать датасет, например:
+
+```bash
+python generate_data.py --num_samples 10000
+```
+
+3. Открыть ноутбук:
+
+```text
+PINN/PhysicsInformedNN.ipynb
+```
+
+4. При необходимости поменять путь к датасету в `Config`:
+
+```python
+data_path = project_root / "storage" / "dataset_10k.csv"
+```
+
+5. Запустить все ячейки ноутбука.
+
+После выполнения checkpoint будет сохранен в `PINN/saved_models/noise_{noise_percent}/`, а итоговые графики и таблицы — в `visualization/noise_{noise_percent}/{N}k/{run_id}/`.

@@ -1,15 +1,37 @@
-# Python
+# Python cache
 __pycache__/
 *.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Jupyter
 .ipynb_checkpoints/
+*/.ipynb_checkpoints/
 
 # Virtual environments
 venv/
 .venv/
+env/
+ENV/
 
 # Generated datasets
-storage/*.csv
+storage/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# IDE files
+.vscode/
+.idea/
 
 # System files
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# OS metadata
+.Spotlight-V100/
+.Trashes/

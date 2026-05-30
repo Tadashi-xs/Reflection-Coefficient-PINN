@@ -15,9 +15,6 @@ venv/
 env/
 ENV/
 
-# Generated datasets
-storage/
-
 # Logs and temporary files
 *.log
 *.tmp
